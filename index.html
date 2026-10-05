@@ -258,7 +258,8 @@ addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden
 
 function mark(id, patch){
   const cur = T(id); if(!cur) return;
-  patches[id] = {...(patches[id]||{}), ...patch};
+  // a data de cada marcação serve para avaliar o modelo de gosto na ordem em que ele ouviu
+  patches[id] = {...(patches[id]||{}), ...patch, marcadoEm: new Date().toISOString()};
   ls.set("patches", patches); render(); queueSave();
 }
 

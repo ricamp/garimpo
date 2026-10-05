@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#111514">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Garimpo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500;62..125,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: celular = player no topo + faixa atual + fila; computador = player e faixa atual à esquerda (fixos), fila à direita */
+:root{
+  --bg:#ECEEEA; --surface:#F8F9F6; --ink:#171C1B; --muted:#5A6562; --line:#CFD6D2;
+  --accent:#0F6B63; --accent-ink:#fff;
+  --tenho:#2F7D45; --baixar:#C4661B; --nao:#9A3A4F; --on-mark:#fff;
+  --yt:#D9302A; --yt-ink:#fff;
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme:dark;
+    --bg:#111514; --surface:#191F1E; --ink:#E3E9E6; --muted:#8F9C98; --line:#2A3432;
+    --accent:#3DB5A9; --accent-ink:#0A1413;
+    --tenho:#5CC079; --baixar:#F0994E; --nao:#E07A91; --on-mark:#0A1413;
+    --yt:#F0554E; --yt-ink:#160606;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);padding:env(safe-area-inset-top,0px) 16px calc(48px + env(safe-area-inset-bottom,0px))}
+button{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-top:14px}
+
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px}
+h1{font:800 2rem/.9 var(--display);font-stretch:70%;text-transform:uppercase;letter-spacing:.01em;margin:0}
+.hdr-r{display:flex;align-items:center;gap:8px}
+.sync{font:12px var(--mono);color:var(--muted);white-space:nowrap}
+.sync[data-s="erro"]{color:var(--nao)}
+.icon-btn{all:unset;cursor:pointer;font:500 13px var(--body);padding:6px 10px;border:1px solid var(--line);border-radius:6px;white-space:nowrap}
+
+.filas{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin}
+.filas button{all:unset;cursor:pointer;flex:0 0 auto;display:flex;flex-direction:column;gap:1px;padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.filas button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.filas .fn{font:800 1rem/1.15 var(--display);font-stretch:75%;text-transform:uppercase;white-space:nowrap}
+.filas .fc{font:12px var(--mono);opacity:.75;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.main{display:grid;grid-template-columns:1fr;gap:16px}
+@media (min-width:900px){
+  .main{grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);align-items:start}
+  .stage{position:sticky;top:12px}
+}
+.stage{display:flex;flex-direction:column;gap:12px;min-width:0}
+.video{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden;max-width:100%}
+.video iframe,.video #player{position:absolute;inset:0;width:100%;height:100%;border:0}
+.video .over{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#E3E9E6;text-align:center;padding:16px;background:#0b0e0d}
+.video .over a{color:#F0994E}
+
+.now{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.now .pos{font:12px var(--mono);color:var(--muted);display:flex;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums}
+.now .title{font:800 1.5rem/1.05 var(--display);font-stretch:80%;overflow-wrap:anywhere;text-wrap:balance}
+.now .artist{font-weight:600;color:var(--muted);font-size:15px}
+.now .fonte{font:12px var(--mono);color:var(--muted);overflow-wrap:anywhere}
+.big{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.big button{all:unset;cursor:pointer;text-align:center;font:600 16px var(--body);padding:14px 4px;border-radius:8px;border:1px solid var(--line)}
+.big button[aria-pressed="true"]{background:var(--c);border-color:var(--c);color:var(--on-mark)}
+.big kbd,.ctl kbd{font:11px var(--mono);opacity:.55;margin-left:4px}
+@media (hover:none){kbd{display:none}}
+.stars{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.stars button{all:unset;cursor:pointer;font-size:28px;line-height:1;padding:4px 6px;color:var(--line)}
+.stars button.on{color:var(--baixar)}
+.stars .lbl{font:12px var(--mono);color:var(--muted);margin-left:6px}
+.ctl{display:flex;gap:8px;flex-wrap:wrap}
+.ctl button,.ctl a{all:unset;cursor:pointer;font:500 14px var(--body);padding:9px 12px;border:1px solid var(--line);border-radius:8px;display:inline-flex;align-items:center;gap:6px}
+.ctl .app{background:var(--yt);border-color:var(--yt);color:var(--yt-ink);font-weight:600}
+.links{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px}
+.links a{color:var(--accent);text-decoration:none}
+.hint{font-size:13px;color:var(--muted);margin:0}
+
+.queue{display:flex;flex-direction:column;min-width:0}
+.queue h2{font:800 1.1rem/1 var(--display);font-stretch:75%;text-transform:uppercase;letter-spacing:.03em;margin:4px 0 8px;display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.queue h2 small{font:500 12px var(--mono);color:var(--muted);letter-spacing:0;text-transform:none}
+.q{display:grid;grid-template-columns:2.2em minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:9px 6px;border-top:1px solid var(--line);cursor:pointer;border-radius:6px}
+.q.cur{background:var(--surface);outline:1px solid var(--line)}
+.q .n{font:800 1.2rem/1 var(--display);font-stretch:70%;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.q .tt{min-width:0}
+.q .ti{font-weight:600;overflow-wrap:anywhere;line-height:1.3}
+.q .ar{color:var(--muted);font-size:13px}
+.q[data-s="nao"] .ti,.q[data-s="tenho"] .ti{opacity:.55}
+.mini{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.mini button{all:unset;cursor:pointer;font:600 12px var(--body);padding:6px 8px;border-right:1px solid var(--line);color:var(--muted)}
+.mini button:last-child{border-right:0}
+.mini button[aria-pressed="true"]{background:var(--c);color:var(--on-mark)}
+.q .sub{grid-column:2 / -1;font:12px var(--mono);color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
+.q .sub a{color:var(--accent);text-decoration:none}
+.q .st{color:var(--baixar)}
+@media (max-width:520px){.q{grid-template-columns:1.8em minmax(0,1fr)}.q .mini{grid-column:2}}
+
+.tudo-ctl{display:flex;flex-direction:column;gap:8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{all:unset;cursor:pointer;font:500 13px var(--body);padding:4px 10px;border-radius:999px;border:1px solid var(--line)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+input[type=search],input[type=password]{font:15px var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:9px 10px;width:100%}
+.btn{all:unset;cursor:pointer;text-align:center;font:600 15px var(--body);background:var(--accent);color:var(--accent-ink);padding:10px 16px;border-radius:8px}
+.setup{max-width:560px;display:flex;flex-direction:column;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
+.setup h2{font:800 1.4rem/1 var(--display);font-stretch:75%;text-transform:uppercase;margin:0}
+.setup ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px}
+.setup code{font:13px var(--mono);background:var(--bg);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+.msg{font:13px var(--mono);color:var(--nao);min-height:1em}
+.empty{color:var(--muted);padding:12px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Garimpo</h1>
+    <div class="hdr-r">
+      <span class="sync" id="sync"></span>
+      <button class="icon-btn" id="exportBtn" type="button" hidden>Lista baixar</button>
+      <button class="icon-btn" id="cfgBtn" type="button" title="Chave do GitHub">Chave</button>
+    </div>
+  </header>
+
+  <section class="setup" id="setup" hidden>
+    <h2>Conectar ao GitHub</h2>
+    <p class="hint" style="margin:0">As faixas e as suas marcações ficam no arquivo <code>dados/faixas.json</code> do repositório privado <code>ricamp/ric-skill-garimpo-musical</code>. A página precisa de uma chave para ler e gravar nele. A chave fica só neste navegador.</p>
+    <ol>
+      <li>Abra <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a>.</li>
+      <li>Nome: <code>garimpo</code>. Validade: a maior que der.</li>
+      <li>Repository access: <b>Only select repositories</b> → <code>ric-skill-garimpo-musical</code>.</li>
+      <li>Permissions → Repository → <b>Contents: Read and write</b>. Mais nada.</li>
+      <li>Gere, copie e cole aqui. Faça isso uma vez no celular e uma no computador.</li>
+    </ol>
+    <input type="password" id="tokenIn" placeholder="github_pat_…" autocomplete="off" aria-label="Chave do GitHub">
+    <button class="btn" id="tokenSave" type="button">Conectar</button>
+    <div class="msg" id="setupMsg"></div>
+  </section>
+
+  <div id="app" hidden>
+    <div class="filas" id="filas" role="tablist"></div>
+
+    <div id="viewFila" class="main" style="margin-top:14px">
+      <div class="stage">
+        <div class="video" id="videoBox">
+          <div id="player"></div>
+          <div class="over" id="over" hidden></div>
+        </div>
+        <div class="now" id="now"></div>
+      </div>
+      <div class="queue">
+        <h2><span id="qTitle">Fila</span> <small id="qCount"></small></h2>
+        <div id="qList"></div>
+      </div>
+    </div>
+
+    <div id="viewTudo" style="margin-top:14px" hidden>
+      <div class="tudo-ctl">
+        <div class="chips" id="stChips"></div>
+        <input type="search" id="q" placeholder="Buscar artista ou faixa" aria-label="Buscar">
+      </div>
+      <div class="queue" id="tudoList" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const OWNER = "ricamp", REPO = "ric-skill-garimpo-musical", PATH = "dados/faixas.json";
+const API = `https://api.github.com/repos/${OWNER}/${REPO}`;
+const NIVEIS = ["","fraca","ok","boa","muito boa","arma — tocaria sempre"];
+const STATUS = [
+  {id:"baixar", label:"Baixar", short:"Baixar", key:"b", c:"--baixar"},
+  {id:"nao",    label:"Não",    short:"Não",    key:"n", c:"--nao"},
+  {id:"tenho",  label:"Já tenho", short:"Tenho", key:"t", c:"--tenho"}
+];
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+const ls = {
+  get(k, d=null){ try{ const v = localStorage.getItem("garimpo:"+k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem("garimpo:"+k, JSON.stringify(v)); }catch(e){} },
+  del(k){ try{ localStorage.removeItem("garimpo:"+k); }catch(e){} }
+};
+
+/* ---------- estado ---------- */
+let token = ls.get("token"), branch = null, sha = null, doc = null;
+let patches = ls.get("patches", {});          // marcações ainda não gravadas no GitHub
+let view = ls.get("view", null);              // id da fila, ou "tudo"
+let idx = 0, player = null, playerReady = false, wakeLock = null, fStatus = null, q = "";
+
+const faixas = () => doc ? doc.faixas : {};
+function T(id){ const t = faixas()[id]; return t ? {...t, ...(patches[id]||{}), _id:id} : null; }
+const all = () => Object.keys(faixas()).map(T);
+const statusOf = t => t.status || "pendente";
+
+/* ---------- GitHub ---------- */
+const b64dec = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g,"")), c=>c.charCodeAt(0)));
+function b64enc(str){ const bytes = new TextEncoder().encode(str); let bin = ""; for(let i=0;i<bytes.length;i+=0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i,i+0x8000)); return btoa(bin); }
+async function gh(path, opts={}){
+  const r = await fetch(API+path, {...opts, headers:{"Authorization":"Bearer "+token, "Accept":"application/vnd.github+json", "X-GitHub-Api-Version":"2022-11-28", ...(opts.headers||{})}, cache:"no-store"});
+  if(!r.ok){ const e = new Error("http "+r.status); e.status = r.status; throw e; }
+  return r.json();
+}
+async function load(){
+  if(!branch){ const repo = await gh(""); branch = repo.default_branch; }
+  const f = await gh(`/contents/${PATH}?ref=${encodeURIComponent(branch)}`);
+  sha = f.sha; doc = JSON.parse(b64dec(f.content));
+  // descarta patches que o arquivo já contém
+  for(const [id,p] of Object.entries(patches)){
+    const cur = doc.faixas[id]; if(!cur){ delete patches[id]; continue; }
+    if(Object.entries(p).every(([k,v]) => (cur[k] ?? null) === (v ?? null))) delete patches[id];
+  }
+  ls.set("patches", patches);
+}
+let saving = false, saveTimer = null;
+function queueSave(){ clearTimeout(saveTimer); saveTimer = setTimeout(flush, 1200); setSync(); }
+async function flush(){
+  if(saving || !Object.keys(patches).length) return setSync();
+  saving = true; setSync();
+  const sending = JSON.parse(JSON.stringify(patches));
+  try{
+    for(let attempt=0; attempt<4; attempt++){
+      const next = JSON.parse(JSON.stringify(doc));
+      for(const [id,p] of Object.entries(sending)) if(next.faixas[id]) Object.assign(next.faixas[id], p);
+      next.atualizado = new Date().toISOString().slice(0,10);
+      const ids = Object.keys(sending);
+      try{
+        const r = await gh(`/contents/${PATH}`, {method:"PUT", body: JSON.stringify({
+          message: `marcação: ${ids.slice(0,4).map(id=>`${id} ${sending[id].status||""}${sending[id].nivel?` ${sending[id].nivel}★`:""}`.trim()).join(", ")}${ids.length>4?` (+${ids.length-4})`:""}`,
+          content: b64enc(JSON.stringify(next, null, 1) + "\n"), sha, branch })});
+        sha = r.content.sha; doc = next;
+        for(const [id,p] of Object.entries(sending)) if(JSON.stringify(patches[id]) === JSON.stringify(p)) delete patches[id];
+        ls.set("patches", patches);
+        break;
+      }catch(e){
+        if(e.status === 409 || e.status === 422){ await load(); continue; } // alguém (Claude) mudou o arquivo: recarrega e reaplica
+        throw e;
+      }
+    }
+    lastErr = null;
+  }catch(e){ lastErr = e; }
+  saving = false; setSync();
+  if(Object.keys(patches).length && !lastErr) queueSave();
+}
+let lastErr = null;
+function setSync(){
+  const n = Object.keys(patches).length, el = $("sync");
+  if(lastErr){ el.dataset.s = "erro"; el.textContent = lastErr.status===401 ? "chave inválida" : `não salvou (${n}) · tenta de novo sozinho`; return; }
+  el.dataset.s = ""; el.textContent = saving ? "salvando…" : n ? `${n} para salvar` : "salvo";
+}
+setInterval(()=>{ if(Object.keys(patches).length && !saving) flush(); }, 30000);
+addEventListener("online", ()=>flush());
+addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden") flush(); else requestWake(); });
+
+function mark(id, patch){
+  const cur = T(id); if(!cur) return;
+  patches[id] = {...(patches[id]||{}), ...patch};
+  ls.set("patches", patches); render(); queueSave();
+}
+
+/* ---------- filas ---------- */
+function filas(){
+  const m = new Map();
+  for(const t of all()){ if(!t.fila) continue;
+    const f = m.get(t.fila) || {id:t.fila, label:t.filaLabel||t.fila, o:Number(t.filaOrdem)||0, tracks:[]};
+    f.tracks.push(t); m.set(t.fila, f); }
+  for(const f of m.values()) f.tracks.sort((a,b)=>(a.filaPos??1e9)-(b.filaPos??1e9) || (a.ordem||0)-(b.ordem||0));
+  return [...m.values()].sort((a,b)=>a.o-b.o);
+}
+const curFila = () => filas().find(f=>f.id===view);
+const playable = f => f ? f.tracks.filter(t=>t.yt) : [];
+function pickDefaultView(){
+  const fs = filas();
+  if(view==="tudo" || fs.some(f=>f.id===view)) return;
+  view = (fs.find(f=>f.tracks.some(t=>statusOf(t)==="pendente" && t.yt)) || fs[0] || {id:"tudo"}).id;
+}
+function firstPendingIdx(f){ const p = playable(f); const i = p.findIndex(t=>statusOf(t)==="pendente"); return i<0 ? 0 : i; }
+
+/* ---------- player ---------- */
+function loadYT(){
+  if(window.YT && YT.Player) return onYouTubeIframeAPIReady();
+  const s = document.createElement("script"); s.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(s);
+}
+window.onYouTubeIframeAPIReady = function(){
+  const t = currentTrack();
+  player = new YT.Player("player", {
+    videoId: t && t.yt || undefined,
+    playerVars: {playsinline:1, rel:0, modestbranding:1},
+    events: {
+      onReady: ()=>{ playerReady = true; },
+      onStateChange: e=>{
+        if(e.data === YT.PlayerState.ENDED) step(1, true);
+        if(e.data === YT.PlayerState.PLAYING){ $("over").hidden = true; requestWake(); }
+      },
+      onError: e=>{
+        const t = currentTrack(); if(!t) return;
+        const over = $("over"); over.hidden = false;
+        over.innerHTML = `<div>Este vídeo não toca fora do YouTube.</div><a href="https://www.youtube.com/watch?v=${encodeURIComponent(t.yt)}" target="_blank" rel="noopener">Abrir no YouTube</a><button class="icon-btn" type="button" onclick="step(1,true)" style="color:#E3E9E6">Pular para a próxima</button>`;
+      }
+    }
+  });
+};
+function currentTrack(){ const p = playable(curFila()); return p[Math.min(idx, p.length-1)] || null; }
+function cue(autoplay){
+  const t = currentTrack(); $("over").hidden = true;
+  if(!player || !playerReady || !t) return;
+  autoplay ? player.loadVideoById(t.yt) : player.cueVideoById(t.yt);
+}
+function step(d, autoplay){
+  const p = playable(curFila()); if(!p.length) return;
+  idx = Math.max(0, Math.min(p.length-1, idx + d));
+  ls.set("idx:"+view, idx); cue(autoplay); render();
+}
+async function requestWake(){
+  try{ if("wakeLock" in navigator && document.visibilityState==="visible" && player && player.getPlayerState && player.getPlayerState()===1 && !wakeLock){ wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", ()=>{ wakeLock = null; }); } }catch(e){}
+}
+
+/* ---------- render ---------- */
+const searchQ = t => encodeURIComponent(`${t.artista} ${t.titulo}`);
+function linksHtml(t){
+  return `${t.yt?`<a href="https://www.youtube.com/watch?v=${encodeURIComponent(t.yt)}" target="_blank" rel="noopener">youtube</a>`:`<a href="https://www.youtube.com/results?search_query=${searchQ(t)}" target="_blank" rel="noopener">buscar no youtube</a>`}
+    <a href="https://www.beatport.com/search?q=${searchQ(t)}" target="_blank" rel="noopener">beatport</a>
+    <a href="https://bandcamp.com/search?q=${searchQ(t)}" target="_blank" rel="noopener">bandcamp</a>
+    <a href="https://www.traxsource.com/search?term=${searchQ(t)}" target="_blank" rel="noopener">traxsource</a>`;
+}
+function miniHtml(t){
+  const st = statusOf(t);
+  return `<div class="mini" role="group" aria-label="Marcar">${STATUS.map(o=>`<button type="button" data-v="${o.id}" style="--c:var(${o.c})" aria-pressed="${st===o.id}">${o.short}</button>`).join("")}</div>`;
+}
+function rowHtml(t, n, isCur){
+  return `<div class="q${isCur?" cur":""}" data-id="${esc(t._id)}" data-s="${statusOf(t)}">
+    <div class="n">${n ?? ""}</div>
+    <div class="tt"><div class="ti">${esc(t.titulo)}</div><div class="ar">${esc(t.artista)}${t.nivel?` · <span class="st">${"★".repeat(t.nivel)}</span>`:""}</div></div>
+    ${miniHtml(t)}
+    ${t.nota || !t.yt ? `<div class="sub">${t.nota?`<span class="st">${esc(t.nota)}</span>`:""}${!t.yt?linksHtml(t):""}</div>`:""}
+  </div>`;
+}
+
+function render(){
+  if(!doc) return;
+  pickDefaultView();
+  const fs = filas();
+  const tabs = fs.map(f=>{
+    const left = f.tracks.filter(t=>statusOf(t)==="pendente").length;
+    return `<button type="button" data-f="${esc(f.id)}" aria-pressed="${view===f.id}"><span class="fn">${esc(f.label)}</span><span class="fc">${left?`${left} sem marcar`:"concluída"}</span></button>`;
+  });
+  tabs.push(`<button type="button" data-f="tudo" aria-pressed="${view==="tudo"}"><span class="fn">Tudo</span><span class="fc">${all().length} faixas</span></button>`);
+  $("filas").innerHTML = tabs.join("");
+  $("exportBtn").hidden = !all().some(t=>t.status==="baixar");
+  $("viewFila").hidden = view==="tudo"; $("viewTudo").hidden = view!=="tudo";
+  view==="tudo" ? renderTudo() : renderFila();
+}
+
+function renderFila(){
+  const f = curFila(); if(!f) return;
+  const p = playable(f), sem = f.tracks.filter(t=>!t.yt);
+  idx = Math.max(0, Math.min(idx, Math.max(0,p.length-1)));
+  const t = p[idx];
+  $("videoBox").hidden = !p.length;
+  const marked = f.tracks.filter(x=>statusOf(x)!=="pendente").length;
+  if(t){
+    const st = statusOf(t);
+    const appIds = p.slice(idx).filter(x=>statusOf(x)==="pendente" || x===t).slice(0,50).map(x=>encodeURIComponent(x.yt));
+    $("now").innerHTML = `
+      <div class="pos"><span>${idx+1} de ${p.length} · ${esc(f.label)}</span><span>${marked}/${f.tracks.length} marcadas</span></div>
+      <div><div class="artist">${esc(t.artista)}</div><div class="title">${esc(t.titulo)}</div></div>
+      <div class="fonte">${esc(t.fonte||"")}</div>
+      <div class="big" data-id="${esc(t._id)}">${STATUS.map(o=>`<button type="button" data-v="${o.id}" style="--c:var(${o.c})" aria-pressed="${st===o.id}">${o.label}${o.id==="nao"?" ⏭":""}<kbd>${o.key.toUpperCase()}</kbd></button>`).join("")}</div>
+      <div class="stars" data-id="${esc(t._id)}" role="group" aria-label="Quanto você gostou">${[1,2,3,4,5].map(n=>`<button type="button" data-n="${n}" class="${(Number(t.nivel)||0)>=n?"on":""}" aria-label="${n} de 5: ${NIVEIS[n]}" title="${n} — ${NIVEIS[n]}">★</button>`).join("")}<span class="lbl">${t.nivel?esc(NIVEIS[t.nivel]):"quanto gostou?"}</span></div>
+      <div class="ctl">
+        <button type="button" data-act="prev">◀ Anterior<kbd>←</kbd></button>
+        <button type="button" data-act="next">Próxima ▶<kbd>→</kbd></button>
+        <a class="app" href="https://www.youtube.com/watch_videos?video_ids=${appIds.join(",")}" target="_blank" rel="noopener" title="Para ouvir com a tela bloqueada">Abrir no app ↗</a>
+      </div>
+      <div class="links">${linksHtml(t)}</div>
+      <p class="hint">Na academia, use "Abrir no app": o app do YouTube toca com a tela bloqueada, e a ordem é a mesma desta fila. Aqui a música para se a tela bloquear.</p>`;
+  } else {
+    $("now").innerHTML = `<div class="title">${esc(f.label)}</div><p class="hint">Nenhuma faixa deste grupo tem vídeo. Busque cada uma pelos links da lista e marque ali.</p>`;
+  }
+  $("qTitle").textContent = p.length ? "Fila" : "Faixas";
+  $("qCount").textContent = `${f.tracks.length}`;
+  $("qList").innerHTML = p.map((x,i)=>rowHtml(x, i+1, i===idx)).join("") +
+    (sem.length ? `<h2 style="margin-top:14px">Sem vídeo <small>${sem.length}</small></h2>` + sem.map(x=>rowHtml(x)).join("") : "");
+}
+
+function renderTudo(){
+  const L = all();
+  const opts = [{id:null,label:"Todas"},{id:"pendente",label:"Sem marcar"},...STATUS.map(s=>({id:s.id,label:s.label}))];
+  $("stChips").innerHTML = opts.map(o=>`<button type="button" class="chip" data-st="${o.id??""}" aria-pressed="${fStatus===o.id}">${o.label} · ${o.id?L.filter(t=>statusOf(t)===o.id).length:L.length}</button>`).join("");
+  const qq = q.trim().toLowerCase();
+  const shown = L.filter(t=>(!fStatus || statusOf(t)===fStatus) && (!qq || `${t.artista} ${t.titulo} ${t.fonte||""}`.toLowerCase().includes(qq)));
+  const secs = new Map();
+  for(const t of shown){ const k = t.secao||"outras"; const s = secs.get(k) || {label:t.secaoLabel||k, o:Number(t.secaoOrdem)||0, rows:[]}; if((Number(t.secaoOrdem)||0) > s.o){ s.o = Number(t.secaoOrdem); s.label = t.secaoLabel||s.label; } s.rows.push(t); secs.set(k,s); }
+  const list = [...secs.values()].sort((a,b)=>b.o-a.o);
+  $("tudoList").innerHTML = list.length ? list.map(s=>`<h2 style="margin-top:14px">${esc(s.label)} <small>${s.rows.length}</small></h2>${s.rows.sort((a,b)=>(a.ordem||0)-(b.ordem||0)).map(t=>rowHtml(t)).join("")}`).join("") : `<p class="empty">Nenhuma faixa com esses filtros.</p>`;
+}
+
+/* ---------- eventos ---------- */
+$("filas").addEventListener("click", e=>{
+  const b = e.target.closest("button[data-f]"); if(!b) return;
+  view = b.dataset.f; ls.set("view", view);
+  if(view!=="tudo"){ idx = ls.get("idx:"+view, null) ?? firstPendingIdx(curFila()); cue(false); }
+  render();
+});
+document.addEventListener("click", e=>{
+  const sb = e.target.closest(".big button, .mini button");
+  if(sb){
+    const id = sb.closest("[data-id]").dataset.id; const t = T(id);
+    const v = t.status===sb.dataset.v ? "pendente" : sb.dataset.v;
+    mark(id, {status:v});
+    const cur = currentTrack();
+    if(v==="nao" && sb.closest(".big") && cur && cur._id===id) step(1, true);
+    e.stopPropagation(); return;
+  }
+  const star = e.target.closest(".stars button");
+  if(star){ const id = star.closest("[data-id]").dataset.id; const n = Number(star.dataset.n); mark(id, {nivel: (Number(T(id).nivel)||0)===n ? 0 : n}); return; }
+  const act = e.target.closest("[data-act]");
+  if(act){ step(act.dataset.act==="next"?1:-1, true); return; }
+  const row = e.target.closest(".q");
+  if(row && !e.target.closest("a") && view!=="tudo"){
+    const p = playable(curFila()); const i = p.findIndex(x=>x._id===row.dataset.id);
+    if(i>=0){ idx = i; ls.set("idx:"+view, idx); cue(true); render(); }
+  }
+});
+$("stChips").addEventListener("click", e=>{ const b = e.target.closest("[data-st]"); if(!b) return; fStatus = b.dataset.st || null; render(); });
+$("q").addEventListener("input", e=>{ q = e.target.value; render(); });
+document.addEventListener("keydown", e=>{
+  if(view==="tudo" || e.target.closest("input") || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = currentTrack(); if(!t) return;
+  const s = STATUS.find(o=>o.key===e.key.toLowerCase());
+  if(s){ const v = t.status===s.id ? "pendente" : s.id; mark(t._id,{status:v}); if(v==="nao") step(1,true); e.preventDefault(); }
+  else if(/^[1-5]$/.test(e.key)){ const n = Number(e.key); mark(t._id,{nivel:(Number(t.nivel)||0)===n?0:n}); }
+  else if(e.key==="ArrowRight") step(1,true);
+  else if(e.key==="ArrowLeft") step(-1,true);
+  else if(e.key===" " && player && playerReady){ player.getPlayerState()===1 ? player.pauseVideo() : player.playVideo(); e.preventDefault(); }
+});
+$("exportBtn").onclick = ()=>{
+  const rows = all().filter(t=>t.status==="baixar").sort((a,b)=>(Number(b.secaoOrdem)||0)-(Number(a.secaoOrdem)||0) || (a.ordem||0)-(b.ordem||0));
+  const text = `Garimpo — para baixar (${new Date().toLocaleDateString("pt-BR")})\n\n` + rows.map(t=>`${t.artista} - ${t.titulo}`).join("\n") + "\n";
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text],{type:"text/plain"})); a.download = "garimpo-baixar.txt"; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+};
+$("cfgBtn").onclick = ()=>{ $("setup").hidden = !$("setup").hidden; };
+$("tokenSave").onclick = async ()=>{
+  const v = $("tokenIn").value.trim(); if(!v) return;
+  token = v; $("setupMsg").textContent = "Conectando…";
+  try{ branch = null; await load(); ls.set("token", token); $("setupMsg").textContent = ""; $("tokenIn").value = ""; start(); }
+  catch(e){ $("setupMsg").textContent = e.status===401 ? "Chave inválida." : e.status===404 ? "A chave não enxerga o repositório ric-skill-garimpo-musical. Confira o passo 3." : "Não conectou ("+(e.status||"sem rede")+")."; }
+};
+
+/* ---------- início ---------- */
+function start(){
+  $("setup").hidden = true; $("app").hidden = false;
+  pickDefaultView();
+  if(view!=="tudo") idx = ls.get("idx:"+view, null) ?? firstPendingIdx(curFila());
+  render(); setSync(); loadYT();
+  if(Object.keys(patches).length) flush();
+}
+(async ()=>{
+  if(!token){ $("setup").hidden = false; return; }
+  $("sync").textContent = "carregando…";
+  try{ await load(); start(); }
+  catch(e){ $("setup").hidden = false; $("setupMsg").textContent = e.status===401 ? "A chave expirou ou foi revogada. Cole uma nova." : "Não deu para carregar ("+(e.status||"sem rede")+")."; }
+})();
+</script>
+</body>
+</html>

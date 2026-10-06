@@ -113,6 +113,9 @@ input[type=search],input[type=password]{font:15px var(--body);color:var(--ink);b
 .setup ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px}
 .setup code{font:13px var(--mono);background:var(--bg);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
 .msg{font:13px var(--mono);color:var(--nao);min-height:1em}
+.why{font:600 15px/1.4 var(--body);color:var(--ink);margin:0}
+.why:empty{display:none}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .empty{color:var(--muted);padding:12px 0}
 </style>
 </head>
@@ -127,19 +130,27 @@ input[type=search],input[type=password]{font:15px var(--body);color:var(--ink);b
     </div>
   </header>
 
-  <section class="setup" id="setup" hidden>
+  <form class="setup" id="setup" autocomplete="on" hidden>
     <h2>Conectar ao GitHub</h2>
-    <p class="hint" style="margin:0">As faixas e as suas marcações ficam no arquivo <code>dados/faixas.json</code> do repositório privado <code>ricamp/ric-skill-garimpo-musical</code>. A página precisa de uma chave para ler e gravar nele. A chave fica só neste navegador.</p>
+    <p class="why" id="setupWhy"></p>
+    <p class="hint" style="margin:0">As faixas e as suas marcações ficam no arquivo <code>dados/faixas.json</code> do repositório privado <code>ricamp/ric-skill-garimpo-musical</code>. A página precisa de uma chave para ler e gravar nele. A chave fica guardada neste navegador e só é pedida de novo se o GitHub recusar.</p>
     <ol>
       <li>Abra <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a>.</li>
-      <li>Nome: <code>garimpo</code>. Validade: a maior que der.</li>
+      <li>Nome: <code>garimpo</code>. Expiration: <b>No expiration</b>. Se essa opção não aparecer, escolha Custom e a data mais distante que ele aceitar.</li>
       <li>Repository access: <b>Only select repositories</b> → <code>ric-skill-garimpo-musical</code>.</li>
       <li>Permissions → Repository → <b>Contents: Read and write</b>. Mais nada.</li>
-      <li>Gere, copie e cole aqui. Faça isso uma vez no celular e uma no computador.</li>
+      <li>Gere, copie e cole aqui. Quando o navegador oferecer para salvar a senha, aceite: nos outros aparelhos ele preenche sozinho e você não precisa criar outra chave.</li>
     </ol>
-    <input type="password" id="tokenIn" placeholder="github_pat_…" autocomplete="off" aria-label="Chave do GitHub">
-    <button class="btn" id="tokenSave" type="button">Conectar</button>
+    <input class="vh" type="text" id="userIn" name="username" value="garimpo" autocomplete="username" tabindex="-1" aria-hidden="true" readonly>
+    <input type="password" id="tokenIn" name="password" placeholder="github_pat_…" autocomplete="current-password" aria-label="Chave do GitHub">
+    <button class="btn" id="tokenSave" type="submit">Conectar</button>
     <div class="msg" id="setupMsg"></div>
+  </form>
+
+  <section class="setup" id="offline" hidden>
+    <h2>Sem conexão com o GitHub</h2>
+    <p class="hint" style="margin:0" id="offlineMsg"></p>
+    <button class="btn" id="retryBtn" type="button">Tentar de novo</button>
   </section>
 
   <div id="app" hidden>
@@ -188,6 +199,7 @@ const ls = {
 
 /* ---------- estado ---------- */
 let token = ls.get("token"), branch = null, sha = null, doc = null;
+let started = false, netErr = null;      // netErr: a última leitura falhou por rede ou servidor, não pela chave
 let patches = ls.get("patches", {});          // marcações ainda não gravadas no GitHub
 let view = ls.get("view", null);              // id da fila, ou "tudo"
 let idx = 0, player = null, playerReady = false, wakeLock = null, fStatus = null, q = "";
@@ -215,7 +227,15 @@ async function load(){
     if(Object.entries(p).every(([k,v]) => (cur[k] ?? null) === (v ?? null))) delete patches[id];
   }
   ls.set("patches", patches);
+  saveCache();
 }
+// Última versão lida fica neste navegador: a página abre na hora e funciona mesmo se o GitHub não responder.
+function saveCache(){ ls.set("cache", {doc, sha, branch}); }
+// A chave só é pedida quando o GitHub a recusa (401) ou quando ela não enxerga o repositório (404).
+const needsKey = e => !!e && (e.status === 401 || e.status === 404);
+function askKey(why){ $("offline").hidden = true; $("setupWhy").textContent = why; $("setupMsg").textContent = ""; $("setup").hidden = false; }
+const whyFor = e => e.status === 401 ? "O GitHub recusou a chave salva: ela expirou ou foi revogada. Cole uma nova. As marcações que faltava salvar continuam guardadas aqui."
+                                     : "A chave salva não enxerga mais o repositório ric-skill-garimpo-musical. Confira o passo 3 e cole a chave de novo.";
 let saving = false, saveTimer = null;
 function queueSave(){ clearTimeout(saveTimer); saveTimer = setTimeout(flush, 1200); setSync(); }
 async function flush(){
@@ -234,26 +254,28 @@ async function flush(){
           content: b64enc(JSON.stringify(next, null, 1) + "\n"), sha, branch })});
         sha = r.content.sha; doc = next;
         for(const [id,p] of Object.entries(sending)) if(JSON.stringify(patches[id]) === JSON.stringify(p)) delete patches[id];
-        ls.set("patches", patches);
+        ls.set("patches", patches); saveCache();
         break;
       }catch(e){
         if(e.status === 409 || e.status === 422){ await load(); continue; } // alguém (Claude) mudou o arquivo: recarrega e reaplica
         throw e;
       }
     }
-    lastErr = null;
-  }catch(e){ lastErr = e; }
+    lastErr = null; netErr = null;
+  }catch(e){ lastErr = e; if(needsKey(e)) askKey(whyFor(e)); }
   saving = false; setSync();
   if(Object.keys(patches).length && !lastErr) queueSave();
 }
 let lastErr = null;
 function setSync(){
   const n = Object.keys(patches).length, el = $("sync");
-  if(lastErr){ el.dataset.s = "erro"; el.textContent = lastErr.status===401 ? "chave inválida" : `não salvou (${n}) · tenta de novo sozinho`; return; }
+  if(lastErr){ el.dataset.s = "erro"; el.textContent = lastErr.status===401 ? "chave recusada" : lastErr.status===403 ? "chave sem permissão de escrita" : `não salvou (${n}) · tenta de novo sozinho`; return; }
+  if(netErr && !saving){ el.dataset.s = "erro"; el.textContent = n ? `sem conexão · ${n} para salvar` : "sem conexão · última versão salva"; return; }
   el.dataset.s = ""; el.textContent = saving ? "salvando…" : n ? `${n} para salvar` : "salvo";
 }
 setInterval(()=>{ if(Object.keys(patches).length && !saving) flush(); }, 30000);
-addEventListener("online", ()=>flush());
+setInterval(()=>{ if(token && (netErr || !started) && $("setup").hidden) refresh(); }, 15000);
+addEventListener("online", ()=>{ if(token && (netErr || !started)) refresh(); flush(); });
 addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden") flush(); else requestWake(); });
 
 function mark(id, patch){
@@ -445,27 +467,73 @@ $("exportBtn").onclick = ()=>{
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text],{type:"text/plain"})); a.download = "garimpo-baixar.txt"; a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
 };
-$("cfgBtn").onclick = ()=>{ $("setup").hidden = !$("setup").hidden; };
-$("tokenSave").onclick = async ()=>{
-  const v = $("tokenIn").value.trim(); if(!v) return;
-  token = v; $("setupMsg").textContent = "Conectando…";
-  try{ branch = null; await load(); ls.set("token", token); $("setupMsg").textContent = ""; $("tokenIn").value = ""; start(); }
-  catch(e){ $("setupMsg").textContent = e.status===401 ? "Chave inválida." : e.status===404 ? "A chave não enxerga o repositório ric-skill-garimpo-musical. Confira o passo 3." : "Não conectou ("+(e.status||"sem rede")+")."; }
+$("cfgBtn").onclick = ()=>{
+  const open = $("setup").hidden;
+  if(open){ $("setupWhy").textContent = token ? "Este navegador já tem uma chave salva e funcionando. Cole outra só se quiser trocar." : "Este navegador ainda não tem a chave."; $("setupMsg").textContent = ""; }
+  $("setup").hidden = !open;
 };
+async function connect(v){
+  const prev = token; token = v; $("setupMsg").textContent = "Conectando…";
+  try{
+    branch = null; await load();
+    ls.set("token", token); keepStorage(); storeCredential(token);
+    netErr = null; lastErr = null; $("setupMsg").textContent = ""; $("setupWhy").textContent = ""; $("tokenIn").value = "";
+    if(started){ $("setup").hidden = true; render(); setSync(); flush(); } else start();
+    return true;
+  }catch(e){
+    token = prev;
+    $("setupMsg").textContent = e.status===401 ? "Chave inválida." : e.status===404 ? "A chave não enxerga o repositório ric-skill-garimpo-musical. Confira o passo 3." : "Não conectou ("+(e.status||"sem rede")+"). Tente de novo: o problema não parece ser a chave.";
+    return false;
+  }
+}
+$("setup").addEventListener("submit", e=>{ e.preventDefault(); const v = $("tokenIn").value.trim(); if(v) connect(v); });
+$("retryBtn").onclick = ()=>refresh();
+
+/* ---------- a chave fica guardada ---------- */
+// Pede ao navegador para não apagar os dados desta página quando faltar espaço.
+function keepStorage(){ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{}); }catch(e){} }
+// Onde existe (Chrome, Edge), guarda a chave no gerenciador de senhas e busca de lá num navegador novo.
+async function storeCredential(t){ try{ if(window.PasswordCredential) await navigator.credentials.store(new PasswordCredential({id:"garimpo", name:"Garimpo", password:t})); }catch(e){} }
+async function savedCredential(){ try{ if(window.PasswordCredential){ const c = await navigator.credentials.get({password:true, mediation:"optional"}); return (c && c.password) || null; } }catch(e){} return null; }
 
 /* ---------- início ---------- */
 function start(){
-  $("setup").hidden = true; $("app").hidden = false;
+  started = true;
+  $("setup").hidden = true; $("offline").hidden = true; $("app").hidden = false;
   pickDefaultView();
   if(view!=="tudo") idx = ls.get("idx:"+view, null) ?? firstPendingIdx(curFila());
   render(); setSync(); loadYT();
   if(Object.keys(patches).length) flush();
 }
+// Busca a versão atual. Se falhar por rede ou servidor, a tela continua como está e a chave não é pedida.
+let refreshing = false;
+async function refresh(){
+  if(refreshing) return; refreshing = true;
+  try{
+    await load(); netErr = null;
+    if(started){ render(); setSync(); if(Object.keys(patches).length) flush(); } else start();
+  }catch(e){
+    if(needsKey(e)) askKey(whyFor(e));
+    else{
+      netErr = e;
+      if(started) setSync();
+      else{ $("sync").textContent = ""; $("offlineMsg").textContent = "Não deu para carregar as faixas ("+(e.status||"sem rede")+"). A chave continua salva. A página tenta de novo sozinha a cada 15 segundos."; $("offline").hidden = false; }
+    }
+  }
+  refreshing = false;
+}
 (async ()=>{
-  if(!token){ $("setup").hidden = false; return; }
-  $("sync").textContent = "carregando…";
-  try{ await load(); start(); }
-  catch(e){ $("setup").hidden = false; $("setupMsg").textContent = e.status===401 ? "A chave expirou ou foi revogada. Cole uma nova." : "Não deu para carregar ("+(e.status||"sem rede")+")."; }
+  if(!token){
+    askKey("Este navegador ainda não tem a chave.");
+    const saved = await savedCredential();     // se o gerenciador de senhas tiver a chave, conecta sem digitar
+    if(saved && !token) await connect(saved);
+    return;
+  }
+  keepStorage();
+  const c = ls.get("cache");
+  if(c && c.doc && c.doc.faixas){ doc = c.doc; sha = c.sha; branch = c.branch; start(); }
+  else $("sync").textContent = "carregando…";
+  refresh();
 })();
 </script>
 </body>
